@@ -1,5 +1,6 @@
 package com.iecas.kds.tools.kafka.kafkaClient;
 
+import com.iecas.kds.tools.kafka.config.Config;
 import com.iecas.kds.tools.kafka.kafkaUtils.PropertiesUtils;
 import kafka.consumer.Consumer;
 import kafka.consumer.ConsumerConfig;
@@ -18,30 +19,31 @@ import java.util.concurrent.Executors;
 /**
  * Created by IECAS on 2015/9/24.
  */
-public class ComsumerDataAPI {
+public class ConsumerDataAPI {
 
 
     private ConsumerConnector consumer;
     private String topic;
     private ExecutorService executor;
-    private final int thredNum =1;
-    private static final Logger LOGGER = LoggerFactory.getLogger(ComsumerDataAPI.class);
+    private final int thredNum = Config.conThreadNum;
+    private static final Logger LOGGER = LoggerFactory.getLogger(ConsumerDataAPI.class);
 
     /**
      * 构造函数，初始化信息
      * @param topicName
      */
-    public ComsumerDataAPI(String topicName,String groupId) {
+    public ConsumerDataAPI(String topicName, String groupId) {
 
         try {
             //初始化
             Properties props = new Properties();
-            props.put("zookeeper.connect", PropertiesUtils.application.getProperty("zookeeper.connect"));
+            props.put("zookeeper.connect", PropertiesUtils.get("kafka").getProperty("zookeeper.connect"));
             props.put("group.id",groupId);
-            props.put("zookeeper.session.timeout.ms", PropertiesUtils.application.getProperty("zookeeper.session.timeout.ms"));
-            props.put("zookeeper.connection.timeout.ms", PropertiesUtils.application.getProperty("zookeeper.connection.timeout.ms"));
-            props.put("zookeeper.sync.time.ms", PropertiesUtils.application.getProperty("zookeeper.sync.time.ms"));
-            props.put("auto.commit.interval.ms", PropertiesUtils.application.getProperty("auto.commit.interval.ms"));
+            props.put("zookeeper.session.timeout.ms", PropertiesUtils.get("kafka").getProperty("zookeeper.session.timeout.ms"));
+            props.put("zookeeper.connection.timeout.ms", PropertiesUtils.get("kafka").getProperty("zookeeper.connection.timeout.ms"));
+            props.put("zookeeper.sync.time.ms", PropertiesUtils.get("kafka").getProperty("zookeeper.sync.time.ms"));
+            props.put("auto.commit.interval.ms", PropertiesUtils.get("kafka").getProperty("auto.commit.interval.ms"));
+            props.put("auto.offset.reset", PropertiesUtils.get("kafka").getProperty("auto.offset.reset"));  //配置是否从头开始读
 
             this.consumer = Consumer.createJavaConsumerConnector(new ConsumerConfig(props));
             this.topic = topicName;
@@ -58,12 +60,12 @@ public class ComsumerDataAPI {
      * 获取kafka流对象
      * @return
      */
-    public KafkaStream getKafkaStream(){
+    public void getKafkaStreams(){
 
         try {
 
             Map<String, Integer> topicCountMap = new HashMap<String, Integer>();
-            topicCountMap.put(topic, new Integer(thredNum));//设定只用一个流
+            topicCountMap.put(topic, new Integer(thredNum));
 
             Map<String, List<KafkaStream<byte[], byte[]>>> consumerMap = consumer
                     .createMessageStreams(topicCountMap);
@@ -71,20 +73,20 @@ public class ComsumerDataAPI {
             //获取流列表
             List<KafkaStream<byte[], byte[]>> streams = consumerMap.get(topic);
 
-            if (streams.size()>0){
-                KafkaStream stream = streams.get(0);
-                return stream;
-            }else{
-                return null;
+//            if (streams.size()>0){
+//                KafkaStream stream = streams.get(0);
+//                return stream;
+//            }else{
+//                return null;
+//            }
+            //System.out.println(streams.size());
+            for (final KafkaStream<byte[], byte[]> stream : streams) {
+                executor.submit(new ConsumerThreadImpl(stream));
             }
-
         }catch (Exception e) {
             e.printStackTrace();
             LOGGER.error("Error get stream {}", e);
         }
-
-        return null;
-
     }
 
     /**

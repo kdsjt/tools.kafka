@@ -6,15 +6,15 @@ import kafka.producer.KeyedMessage;
 import kafka.producer.ProducerConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.w3c.dom.Document;
 
-import java.util.ArrayList;
-import java.util.Properties;
+import java.util.*;
 
 /**
  * kafka生产者接口
  * Created by IECAS on 2015/9/22.
  */
-public class ProducerDataAPI_Object {
+public class ProducerDataByPartitionAPI_Object {
 
     private static Producer<Object,Object> producer = null;//生产者对象
     private static KeyedMessage<Object, Object> data;//一条消息
@@ -39,14 +39,15 @@ public class ProducerDataAPI_Object {
 
                 // 设置配置属性
                 Properties props = new Properties();
-                props.put("metadata.broker.list", PropertiesUtils.get("kafka").get("metadata.broker.list"));
+                props.put("metadata.broker.list", PropertiesUtils.get("kafka").getProperty("metadata.broker.list"));
                 // key.serializer.class默认为serializer.class
-                props.put("key.serializer.class", PropertiesUtils.get("kafka").get("key.serializer.class_obj"));
+                props.put("key.serializer.class", PropertiesUtils.get("kafka").getProperty("key.serializer.class_obj"));
                 // 触发acknowledgement机制，否则是fire and forget，可能会引起数据丢失
                 // 值为0,1,-1,可以参考
                 // http://kafka.apache.org/08/configuration.html
-                props.put("request.required.acks", PropertiesUtils.get("kafka").get("request.required.acks"));
-                props.put("serializer.class",PropertiesUtils.get("kafka").get("serializer.class_obj"));
+                props.put("request.required.acks", PropertiesUtils.get("kafka").getProperty("request.required.acks"));
+                props.put("partitioner.class", PropertiesUtils.get("kafka").getProperty("partitioner.class_obj"));
+                props.put("serializer.class",PropertiesUtils.get("kafka").getProperty("serializer.class_obj"));
                 ProducerConfig config = new ProducerConfig(props);
 
                 // 创建producer
@@ -81,7 +82,7 @@ public class ProducerDataAPI_Object {
      * @param topicName  topic名称
      * @param message    消息
      */
-    public static void sendData(String topicName,Object message){
+    public static void sendData(String topicName,Object key,Object message){
 
         try {
 
@@ -90,7 +91,7 @@ public class ProducerDataAPI_Object {
             }
 
             data = new KeyedMessage<Object, Object>(
-                    topicName, message);
+                    topicName,key, message);
             producer.send(data);//发送消息
 
         } catch (Exception e) {
@@ -104,9 +105,9 @@ public class ProducerDataAPI_Object {
     /**
      * 向kafka消息队列指定topic发送一组消息
      * @param topicName
-     * @param messageList
+     * @param messageMap
      */
-    public static void sendDataList(String topicName,ArrayList<Object> messageList){
+    public static void sendDataList(String topicName,HashMap<Object, Object> messageMap){
 
         try {
 
@@ -120,12 +121,19 @@ public class ProducerDataAPI_Object {
 
             int index = 1;//计数器
 
-            for (Object message : messageList) {//循环置入数据
 
-                msg = new KeyedMessage<Object, Object>(topicName,message);
+            for (Map.Entry<Object, Object> message : messageMap.entrySet()) {//循环置入数据
+
+                Object key = message.getKey();
+                Object value = message.getValue();
+                msg = new KeyedMessage<Object, Object>(topicName, key, value);
+
                 dataList.add(msg);
 
-                if (index%10000==0){//默认10000条信息发送一次
+//                msg = new KeyedMessage<Object, Object>(topicName,message);
+//                dataList.add(msg);
+
+                if (index % 10000==0){//默认10000条信息发送一次
                     producer.send(dataList);
                     dataList = new ArrayList<KeyedMessage<Object, Object>>();
                     index++;
@@ -143,7 +151,8 @@ public class ProducerDataAPI_Object {
         }catch (Exception e) {
 
             e.printStackTrace();
-            LOGGER.error("Error produce to {},messageListsize is {}", topicName, messageList.size(), e);
+            LOGGER.error("Error produce to {},messageListsize is {}", topicName, messageMap.size(), e);
+
 
         }
 
