@@ -1,33 +1,50 @@
 package com.iecas.kds.tools.kafka.main;
 
 import com.iecas.kds.tools.kafka.config.Config;
-import com.iecas.kds.tools.kafka.kafkaClient.ProducerDataByPartitionAPI;
 import com.iecas.kds.tools.kafka.kafkaUtils.DataSource;
+import com.iecas.kds.tools.kafka.service.Producer;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Created by james on 2016/12/1.
  */
 public class KafkaPro {
 
-  private Map<String,String> map = new HashMap();
-
   public static void main(String[] args) {
+    AtomicInteger flag_end = new AtomicInteger(0);
     DataSource.getString();
-    new KafkaPro().producer();
-  }
-  public void producer(){
-    for (int i = 0; i < Config.proCount; i++) {
-      long begin = System.currentTimeMillis();
-      for (int j = 0; j < Config.proBatchSize; j++) {
-        map.put(String.valueOf(i*Config.proBatchSize+j),DataSource.getString());
-      }
-      ProducerDataByPartitionAPI.sendDataMap(Config.proTopicName,map);
-      map.clear();
-      long time = System.currentTimeMillis()-begin;
-      System.out.println("第 "+(i+1)+" 次发送 "+Config.proBatchSize+" 条数据耗时： "+time+"毫秒,共发送了"+(i+1)*Config.proBatchSize+"条数据！");
+    ExecutorService pool = Executors.newCachedThreadPool();
+    long begin = System.currentTimeMillis();
+    for (int i = 0; i < Config.proThreadNum; i++) {
+      pool.execute(() -> {
+        flag_end.getAndIncrement();
+        if (Config.producerType.equals("async")) {
+          new Producer().producer();
+        } else if (!Config.proIsBatch) {
+          new Producer().producer();
+        } else {
+          new Producer().producer_batch();
+        }
+        flag_end.getAndDecrement();
+      });
     }
+    while (true) {
+      try {
+        Thread.sleep(1000);
+      } catch (InterruptedException e) {
+        e.printStackTrace();
+      }
+      if (flag_end.get() == 0) {
+        break;
+      }
+    }
+    pool.shutdownNow();
+    long time = System.currentTimeMillis() - begin;
+    int second = (int) (time/1000);
+    int throughput = Config.proCount*Config.proBatchSize*Config.proThreadNum/second;
+    System.out.println("共耗时： "+time + " ms！\n吞吐为： "+ throughput +" 条消息每秒");
   }
 }
